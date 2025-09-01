@@ -1,47 +1,70 @@
 # scripts/adb_commands.py
 import os
 import time
+import subprocess
+import subprocess
 
-# Optional: default device IP for BlueStacks
-DEVICE_IP = "127.0.0.1:5555"
+# Full path to HD-Adb.exe
+ADB_PATH = r"C:\Program Files\BlueStacks_nxt\HD-Adb.exe"
 
-def connect_device(device_ip=DEVICE_IP):
-    """Connects to the Android device using adb."""
-    print(f"[INFO] Connecting to {device_ip} ...")
-    os.system(f"adb connect {device_ip}")
-    time.sleep(1)
+def run_adb_command(args):
+    try:
+        result = subprocess.run([ADB_PATH] + args, capture_output=True, text=True)
+        return result.stdout.strip()
+    except Exception as e:
+        print(f"[ERROR] Could not run adb command: {e}")
+        return None
 
-def send_command(action):
-    """
-    Send swipe/tap commands to the connected device (BlueStacks / Android Emulator).
+def get_default_device():
+    """Detects the first connected device/emulator."""
+    try:
+        result = subprocess.check_output(["adb", "devices"], text=True)
+        lines = result.strip().split("\n")[1:]  # Skip "List of devices attached"
+        for line in lines:
+            if line.strip() and "device" in line:
+                return line.split()[0]  # Return device ID (e.g., emulator-5554)
+    except Exception as e:
+        print(f"[ERROR] Could not detect device: {e}")
+    return None
+
+def connect_device():
+    devices = run_adb_command(["devices"])
+    if devices and "emulator-5554" in devices:
+        print("[INFO] Device connected:", devices)
+        return True
+    else:
+        print("[ERROR] No device detected. Please start BlueStacks first.")
+        return False
+
+def send_command(action, device=None):
+    """Send swipe/tap commands to the connected device."""
+    if not device:
+        print("[ERROR] No device connected!")
+        return
     
-    Parameters:
-    action (str): One of 'UP', 'DOWN', 'LEFT', 'RIGHT', 'JUMP', 'DUCK', 'PAUSE', 'PLAY'.
-    """
+    prefix = f"adb -s {device} shell"
+    
     if action in ["UP", "JUMP"]:
-        # Swipe from bottom to top
-        os.system("adb shell input swipe 500 1000 500 500")
+        os.system(f"{prefix} input swipe 500 1000 500 500")
         print("[ACTION] Jump / Swipe Up")
     elif action in ["DOWN", "DUCK"]:
-        # Swipe from top to bottom
-        os.system("adb shell input swipe 500 1000 500 1500")
+        os.system(f"{prefix} input swipe 500 1000 500 1500")
         print("[ACTION] Duck / Swipe Down")
     elif action == "LEFT":
-        # Swipe from right to left
-        os.system("adb shell input swipe 600 1000 200 1000")
+        os.system(f"{prefix} input swipe 600 1000 200 1000")
         print("[ACTION] Swipe Left")
     elif action == "RIGHT":
-        # Swipe from left to right
-        os.system("adb shell input swipe 400 1000 800 1000")
+        os.system(f"{prefix} input swipe 400 1000 800 1000")
         print("[ACTION] Swipe Right")
     elif action == "PAUSE":
-        os.system("adb shell input tap 1000 150")  # Adjust coordinates
+        os.system(f"{prefix} input tap 1000 150")
         print("[ACTION] Pause")
     elif action == "PLAY":
-        os.system("adb shell input tap 600 1200")  # Adjust coordinates
+        os.system(f"{prefix} input tap 600 1200")
         print("[ACTION] Play")
+    elif action == "STOP":
+        print("[ACTION] Stop detected – no command sent")
     else:
         print(f"[WARNING] Unknown action: {action}")
-
-    # Small delay to avoid sending commands too quickly
+    
     time.sleep(0.1)

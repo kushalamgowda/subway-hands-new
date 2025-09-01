@@ -5,8 +5,10 @@
 # ------------------------------
 
 # File paths
+import os
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # go up from scripts/
+MODEL_FILE = os.path.join(BASE_DIR, "models", "gesture_model.pkl")
 DATA_FILE = "data/gesture_data.pkl"
-MODEL_FILE = "models/gesture_model.pkl"
 LOG_FILE = "logs/analytics.log"
 
 # Training configuration

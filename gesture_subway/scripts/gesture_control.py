@@ -25,6 +25,7 @@ hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.7)
 # Analytics logger
 logger = AnalyticsLogger()
 
+
 # ------------------------------
 # Helper: Extract Features
 # ------------------------------
@@ -38,9 +39,32 @@ def extract_features(landmarks):
 
 
 # ------------------------------
+# Map gestures to game actions
+# ------------------------------
+def perform_action(gesture, device):
+    if gesture == "LEFT":
+        threading.Thread(target=send_command, args=("LEFT", device)).start()
+        print("[ACTION] Move Left")
+    elif gesture == "RIGHT":
+        threading.Thread(target=send_command, args=("RIGHT", device)).start()
+        print("[ACTION] Move Right")
+    elif gesture == "JUMP":
+        threading.Thread(target=send_command, args=("JUMP", device)).start()
+        print("[ACTION] Jump")
+    elif gesture == "DUCK":
+        threading.Thread(target=send_command, args=("DUCK", device)).start()
+        print("[ACTION] Duck")
+    elif gesture == "STOP":
+        print("[ACTION] Stop detected – no movement")
+        # Optional: could pause game or just ignore
+    else:
+        print(f"[INFO] Ignored gesture: {gesture}")
+
+
+# ------------------------------
 # Real-time Gesture Recognition
 # ------------------------------
-def gesture_loop():
+def gesture_loop(device):
     cap = cv2.VideoCapture(0)  # webcam
     prev_gesture = None
     last_time = time.time()
@@ -71,9 +95,9 @@ def gesture_loop():
                 cv2.putText(frame, f"Gesture: {gesture}", (10, 50),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-                # Only send ADB command if gesture changed
+                # Only act if gesture changed and cooldown passed
                 if gesture != prev_gesture and (time.time() - last_time) > 0.5:
-                    threading.Thread(target=send_command, args=(gesture,)).start()
+                    perform_action(gesture, device)   # 👈 now sends with device
                     logger.log_gesture(gesture)
                     prev_gesture = gesture
                     last_time = time.time()
@@ -90,6 +114,10 @@ def gesture_loop():
 
 
 if __name__ == "__main__":
-    connect_device()  # Connect to BlueStacks / emulator first
+    device = connect_device()   # Get connected BlueStacks device
+    if not device:
+        print("[ERROR] No device found. Exiting...")
+        exit(1)
+
     print("🚀 Starting Gesture Control...")
-    gesture_loop()
+    gesture_loop(device)
