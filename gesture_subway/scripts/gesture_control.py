@@ -121,7 +121,3 @@ if __name__ == "__main__":
 
     print("🚀 Starting Gesture Control...")
     gesture_loop(device)
-
-
-
-#hello
