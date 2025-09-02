@@ -42,21 +42,24 @@ def extract_features(landmarks):
 # Map gestures to game actions
 # ------------------------------
 def perform_action(gesture, device):
-    if gesture == "LEFT":
+    if gesture == "swipe_left":
         threading.Thread(target=send_command, args=("LEFT", device)).start()
         print("[ACTION] Move Left")
-    elif gesture == "RIGHT":
+    elif gesture == "swipe_right":
         threading.Thread(target=send_command, args=("RIGHT", device)).start()
         print("[ACTION] Move Right")
-    elif gesture == "JUMP":
+    elif gesture == "swipe_up":
         threading.Thread(target=send_command, args=("JUMP", device)).start()
         print("[ACTION] Jump")
-    elif gesture == "DUCK":
+    elif gesture == "swipe_down":
         threading.Thread(target=send_command, args=("DUCK", device)).start()
         print("[ACTION] Duck")
-    elif gesture == "STOP":
+    elif gesture == "stop":
         print("[ACTION] Stop detected – no movement")
         # Optional: could pause game or just ignore
+    elif gesture == "start":
+        print("[ACTION] Start detected – begin game")
+        # Optional: send start command
     else:
         print(f"[INFO] Ignored gesture: {gesture}")
 

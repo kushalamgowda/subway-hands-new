@@ -18,23 +18,28 @@ def run_adb_command(args):
 def get_default_device():
     """Detects the first connected device/emulator."""
     try:
-        result = subprocess.check_output(["adb", "devices"], text=True)
-        lines = result.strip().split("\n")[1:]  # Skip "List of devices attached"
-        for line in lines:
-            if line.strip() and "device" in line:
-                return line.split()[0]  # Return device ID (e.g., emulator-5554)
+        result = run_adb_command(["devices"])
+        if result:
+            lines = result.strip().split("\n")[1:]  # Skip "List of devices attached"
+            for line in lines:
+                if line.strip() and "device" in line:
+                    return line.split()[0]  # Return device ID (e.g., emulator-5554)
     except Exception as e:
         print(f"[ERROR] Could not detect device: {e}")
     return None
 
 def connect_device():
-    devices = run_adb_command(["devices"])
-    if devices and "emulator-5554" in devices:
-        print("[INFO] Device connected:", devices)
-        return True
+    # Start ADB server if not running
+    run_adb_command(["start-server"])
+    time.sleep(1)  # Wait for server to start
+
+    device = get_default_device()
+    if device:
+        print(f"[INFO] Device connected: {device}")
+        return device
     else:
         print("[ERROR] No device detected. Please start BlueStacks first.")
-        return False
+        return None
 
 def send_command(action, device=None):
     """Send swipe/tap commands to the connected device."""
