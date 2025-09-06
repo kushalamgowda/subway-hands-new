@@ -1,15 +1,22 @@
 # config.py
-
 # ------------------------------
 # Project Configuration
 # ------------------------------
 
-# File paths
 import os
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # go up from scripts/
+
+# Base directory (gesture_subway/)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# File paths
+DATA_FILE = os.path.join(BASE_DIR, "data", "gesture_data.pkl")
 MODEL_FILE = os.path.join(BASE_DIR, "models", "gesture_model.pkl")
-DATA_FILE = "data/gesture_data.pkl"
-LOG_FILE = "logs/analytics.log"
+LOG_FILE = os.path.join(BASE_DIR, "logs", "analytics.log")
+
+# Make sure folders exist
+os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
+os.makedirs(os.path.join(BASE_DIR, "models"), exist_ok=True)
+os.makedirs(os.path.join(BASE_DIR, "logs"), exist_ok=True)
 
 # Training configuration
 GESTURES = ["swipe_left", "swipe_right", "swipe_up", "swipe_down", "stop"]

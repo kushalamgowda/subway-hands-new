@@ -1,61 +1,90 @@
+# collect_data.py
+
 import cv2
 import mediapipe as mp
+import numpy as np
 import pickle
 import os
 
-DATA_FILE = "data/gesture_data.pkl"
-GESTURES = ["swipe_left", "swipe_right", "swipe_up", "swipe_down", "stop", "start"]
+import config
 
+# Mediapipe setup
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7)
 mp_draw = mp.solutions.drawing_utils
+hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.7)
 
-def extract_features(hand_landmarks):
+
+# ------------------------------
+# Helper: Extract Features
+# ------------------------------
+def extract_features(landmarks):
+    """Extract (x,y) coordinates of 21 hand landmarks into a feature vector"""
     features = []
-    for lm in hand_landmarks.landmark:
+    for lm in landmarks.landmark:
         features.append(lm.x)
         features.append(lm.y)
-    return features
+    return np.array(features)
 
-def collect_data():
-    data = {"features": [], "labels": []}
+
+# ------------------------------
+# Main Data Collection
+# ------------------------------
+def collect_data(gesture_name, samples=200):
+    print(f"[INFO] Starting data collection for: {gesture_name}")
 
     cap = cv2.VideoCapture(0)
-    for gesture in GESTURES:
-        input(f"\n👉 Collecting data for: {gesture}\nPress ENTER when ready...")
-        collected = 0
+    data = []
+    count = 0
 
-        while collected < 100:
-            ret, frame = cap.read()
-            if not ret:
-                continue
+    while cap.isOpened() and count < samples:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            result = hands.process(rgb)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        result = hands.process(rgb)
 
-            if result.multi_hand_landmarks:
-                for handLms in result.multi_hand_landmarks:
-                    features = extract_features(handLms)
-                    data["features"].append(features)
-                    data["labels"].append(gesture)
-                    collected += 1
-                    mp_draw.draw_landmarks(frame, handLms, mp_hands.HAND_CONNECTIONS)
+        if result.multi_hand_landmarks:
+            for hand_landmarks in result.multi_hand_landmarks:
+                mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-            cv2.putText(frame, f"{gesture}: {collected}/100", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-            cv2.imshow("Data Collection", frame)
+                features = extract_features(hand_landmarks)
+                data.append(features)
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+                count += 1
+                cv2.putText(frame, f"{gesture_name}: {count}/{samples}", (10, 50),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+        cv2.imshow("Collecting Gesture Data", frame)
+
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
 
     cap.release()
     cv2.destroyAllWindows()
 
-    os.makedirs("data", exist_ok=True)
-    with open(DATA_FILE, "wb") as f:
-        pickle.dump(data, f)
+    # Save data
+    if len(data) > 0:
+        if os.path.exists(config.DATA_FILE):
+            with open(config.DATA_FILE, "rb") as f:
+                all_data = pickle.load(f)
+        else:
+            all_data = {}
 
-    print(f"\n✅ Data collection complete. Saved at {DATA_FILE}")
+        all_data[gesture_name] = all_data.get(gesture_name, []) + data
+
+        with open(config.DATA_FILE, "wb") as f:
+            pickle.dump(all_data, f)
+
+        print(f"[INFO] Saved {len(data)} samples for '{gesture_name}' in {config.DATA_FILE}")
+
 
 if __name__ == "__main__":
-    collect_data()
+    # 🕹️ Game gestures
+    gestures = ["swipe_left", "swipe_right", "swipe_up", "swipe_down", "start", "stop"]
+
+    # 🔊 Volume gestures
+    gestures += ["volume_up", "volume_down", "mute"]
+
+    for gesture in gestures:
+        collect_data(gesture, samples=200)  # Collect 200 samples each

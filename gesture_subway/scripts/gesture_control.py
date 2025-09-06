@@ -9,6 +9,7 @@ import threading
 
 from adb_commands import send_command, connect_device
 from analytics import AnalyticsLogger
+from utils import volume_up, volume_down, mute_toggle   # ✅ Volume helpers
 import config
 
 # ------------------------------
@@ -39,27 +40,44 @@ def extract_features(landmarks):
 
 
 # ------------------------------
-# Map gestures to game actions
+# Map gestures to actions (Game + Volume)
 # ------------------------------
 def perform_action(gesture, device):
     if gesture == "swipe_left":
         threading.Thread(target=send_command, args=("LEFT", device)).start()
         print("[ACTION] Move Left")
+
     elif gesture == "swipe_right":
         threading.Thread(target=send_command, args=("RIGHT", device)).start()
         print("[ACTION] Move Right")
+
     elif gesture == "swipe_up":
         threading.Thread(target=send_command, args=("JUMP", device)).start()
         print("[ACTION] Jump")
+
     elif gesture == "swipe_down":
         threading.Thread(target=send_command, args=("DUCK", device)).start()
         print("[ACTION] Duck")
+
     elif gesture == "stop":
         print("[ACTION] Stop detected – no movement")
-        # Optional: could pause game or just ignore
+
     elif gesture == "start":
         print("[ACTION] Start detected – begin game")
-        # Optional: send start command
+
+    # 🔊 Volume Control Gestures
+    elif gesture == "volume_up":
+        volume_up()
+        print("[ACTION] Volume Up")
+
+    elif gesture == "volume_down":
+        volume_down()
+        print("[ACTION] Volume Down")
+
+    elif gesture == "mute":
+        mute_toggle()
+        print("[ACTION] Mute Toggle")
+
     else:
         print(f"[INFO] Ignored gesture: {gesture}")
 
@@ -100,7 +118,7 @@ def gesture_loop(device):
 
                 # Only act if gesture changed and cooldown passed
                 if gesture != prev_gesture and (time.time() - last_time) > 0.5:
-                    perform_action(gesture, device)   # 👈 now sends with device
+                    perform_action(gesture, device)
                     logger.log_gesture(gesture)
                     prev_gesture = gesture
                     last_time = time.time()
@@ -122,6 +140,5 @@ if __name__ == "__main__":
         print("[ERROR] No device found. Exiting...")
         exit(1)
 
-    print("🚀 Starting Gesture Control...")
+    print("🚀 Starting Gesture Control (Game + Volume)...")
     gesture_loop(device)
-
