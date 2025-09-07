@@ -1,70 +1,96 @@
-# scripts/adb_commands.py
 import os
+import subprocess
 import time
-import subprocess
-import subprocess
 
-# Full path to HD-Adb.exe
-ADB_PATH = r"C:\Program Files\BlueStacks_nxt\HD-Adb.exe"
+# ------------------------------
+# Paths
+# ------------------------------
+ADB_EXE = r"C:\Program Files\BlueStacks_nxt\HD-Adb.exe"
+BLUESTACKS_EXE = r"C:\Program Files\BlueStacks_nxt\HD-Player.exe"
 
-def run_adb_command(args):
+# ------------------------------
+# Helper: Run adb commands
+# ------------------------------
+def run_adb(args):
+    """Run adb command using full path"""
+    cmd = [ADB_EXE] + args
     try:
-        result = subprocess.run([ADB_PATH] + args, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
         return result.stdout.strip()
     except Exception as e:
         print(f"[ERROR] Could not run adb command: {e}")
         return None
 
+# ------------------------------
+# Device detection
+# ------------------------------
 def get_default_device():
-    """Detects the first connected device/emulator."""
-    try:
-        result = subprocess.check_output(["adb", "devices"], text=True)
-        lines = result.strip().split("\n")[1:]  # Skip "List of devices attached"
-        for line in lines:
-            if line.strip() and "device" in line:
-                return line.split()[0]  # Return device ID (e.g., emulator-5554)
-    except Exception as e:
-        print(f"[ERROR] Could not detect device: {e}")
+    """Return first connected device"""
+    output = run_adb(["devices"])
+    lines = output.splitlines()
+    for line in lines[1:]:
+        if line.strip() and "device" in line:
+            return line.split()[0]
     return None
 
 def connect_device():
-    devices = run_adb_command(["devices"])
-    if devices and "emulator-5554" in devices:
-        print("[INFO] Device connected:", devices)
-        return True
+    """Start adb server and return a connected device"""
+    run_adb(["start-server"])
+    time.sleep(1)
+    device = get_default_device()
+    if device:
+        print(f"[INFO] Device connected: {device}")
+        return device
     else:
         print("[ERROR] No device detected. Please start BlueStacks first.")
-        return False
+        return None
 
+# ------------------------------
+# Send commands to device
+# ------------------------------
 def send_command(action, device=None):
-    """Send swipe/tap commands to the connected device."""
     if not device:
         print("[ERROR] No device connected!")
         return
     
-    prefix = f"adb -s {device} shell"
-    
+    prefix = ["-s", device, "shell"]
+
     if action in ["UP", "JUMP"]:
-        os.system(f"{prefix} input swipe 500 1000 500 500")
-        print("[ACTION] Jump / Swipe Up")
+        run_adb(prefix + ["input", "swipe", "500", "1000", "500", "500"])
     elif action in ["DOWN", "DUCK"]:
-        os.system(f"{prefix} input swipe 500 1000 500 1500")
-        print("[ACTION] Duck / Swipe Down")
+        run_adb(prefix + ["input", "swipe", "500", "1000", "500", "1500"])
     elif action == "LEFT":
-        os.system(f"{prefix} input swipe 600 1000 200 1000")
-        print("[ACTION] Swipe Left")
+        run_adb(prefix + ["input", "swipe", "600", "1000", "200", "1000"])
     elif action == "RIGHT":
-        os.system(f"{prefix} input swipe 400 1000 800 1000")
-        print("[ACTION] Swipe Right")
+        run_adb(prefix + ["input", "swipe", "400", "1000", "800", "1000"])
     elif action == "PAUSE":
-        os.system(f"{prefix} input tap 1000 150")
-        print("[ACTION] Pause")
+        run_adb(prefix + ["input", "tap", "1000", "150"])
     elif action == "PLAY":
-        os.system(f"{prefix} input tap 600 1200")
-        print("[ACTION] Play")
+        run_adb(prefix + ["input", "tap", "600", "1200"])
     elif action == "STOP":
         print("[ACTION] Stop detected – no command sent")
     else:
         print(f"[WARNING] Unknown action: {action}")
-    
-    time.sleep(0.1)
+
+# ------------------------------
+# Launch BlueStacks
+# ------------------------------
+def launch_bluestacks(wait_after_launch=15):
+    if not os.path.exists(BLUESTACKS_EXE):
+        print(f"[ERROR] BlueStacks not found at {BLUESTACKS_EXE}")
+        return
+    print(f"[INFO] Launching BlueStacks...")
+    subprocess.Popen([BLUESTACKS_EXE])
+    print(f"[INFO] Waiting {wait_after_launch}s for BlueStacks to boot...")
+    time.sleep(wait_after_launch)
+
+# ------------------------------
+# Launch Subway Surfer
+# ------------------------------
+def launch_subway_surfer(device, package="com.kiloo.subwaysurf", activity="com.kiloo.subwaysurf.SplashActivity"):
+    """Launch Subway Surfer inside BlueStacks"""
+    try:
+        run_adb(["-s", device, "shell", "am", "start", "-n", f"{package}/{activity}"])
+        print("[INFO] Subway Surfer launched!")
+    except Exception as e:
+        print(f"[ERROR] Could not launch Subway Surfer: {e}")

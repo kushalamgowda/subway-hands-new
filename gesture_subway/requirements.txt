@@ -5,3 +5,5 @@ numpy
 pandas
 matplotlib
 joblib
+comtypes
+pycaw
