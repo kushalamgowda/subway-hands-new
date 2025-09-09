@@ -6,6 +6,8 @@ import numpy as np
 import time
 import subprocess
 import os
+import signal
+import sys
 
 from utils import volume_up, volume_down, mute_toggle
 import config
@@ -60,11 +62,12 @@ def wait_for_device(timeout=120, poll_interval=3):
 def launch_bluestacks(wait_after_launch=15):
     if not os.path.exists(BLUESTACKS_EXE):
         print(f"[ERROR] BlueStacks not found at {BLUESTACKS_EXE}")
-        return
+        return None
     print(f"[INFO] Launching BlueStacks...")
-    subprocess.Popen([BLUESTACKS_EXE])
+    process = subprocess.Popen([BLUESTACKS_EXE])
     print(f"[INFO] Waiting {wait_after_launch}s for BlueStacks to boot...")
     time.sleep(wait_after_launch)
+    return process
 
 def launch_subway_surfer(device):
     try:
@@ -103,48 +106,54 @@ def perform_action(gesture, device):
 # Gesture Loop
 # ------------------------------
 def gesture_loop(device):
-    # Use CAP_DSHOW to fix black screen issue on Windows
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     prev_gesture = None
     last_time = time.time()
 
-    print("[INFO] Gesture control started. Press 'q' to quit.")
+    print("[INFO] Gesture control started. Press 'Ctrl+C' to quit.")
 
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            print("[WARNING] Failed to read frame from camera.")
-            break
+    try:
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                print("[WARNING] Failed to read frame from camera.")
+                break
 
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        result = hands.process(rgb)
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            result = hands.process(rgb)
 
-        if result.multi_hand_landmarks:
-            for hand_landmarks in result.multi_hand_landmarks:
-                mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-                features = extract_features(hand_landmarks)
-                gesture = model.predict(features)[0]
+            if result.multi_hand_landmarks:
+                for hand_landmarks in result.multi_hand_landmarks:
+                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                    features = extract_features(hand_landmarks)
+                    gesture = model.predict(features)[0]
 
-                cv2.putText(frame, f"Gesture: {gesture}", (10, 50),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    cv2.putText(frame, f"Gesture: {gesture}", (10, 50),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-                if gesture != prev_gesture and (time.time() - last_time) > 0.5:
-                    perform_action(gesture, device)
-                    prev_gesture = gesture
-                    last_time = time.time()
+                    if gesture != prev_gesture and (time.time() - last_time) > 0.5:
+                        perform_action(gesture, device)
+                        prev_gesture = gesture
+                        last_time = time.time()
 
-        cv2.imshow("Gesture Control", frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
+            cv2.imshow("Gesture Control", frame)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+    except KeyboardInterrupt:
+        print("\n[INFO] Gesture control stopped by user (Ctrl+C). Exiting gracefully...")
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
 
 # ------------------------------
 # Main
 # ------------------------------
 if __name__ == "__main__":
-    launch_bluestacks(wait_after_launch=config.BLUESTACKS_BOOT_WAIT)
+    # Launch BlueStacks and get process handle
+    bluestacks_process = launch_bluestacks(wait_after_launch=config.BLUESTACKS_BOOT_WAIT)
+    if bluestacks_process is None:
+        print("[ERROR] BlueStacks launch failed. Exiting...")
+        sys.exit(1)
 
     # Start adb server
     run_adb(["start-server"])
@@ -152,8 +161,20 @@ if __name__ == "__main__":
     device = wait_for_device(timeout=config.BLUESTACKS_CONNECT_TIMEOUT)
     if not device:
         print("[ERROR] No device detected. Exiting...")
-        exit(1)
+        bluestacks_process.terminate()
+        sys.exit(1)
 
     launch_subway_surfer(device)
     print("🚀 Starting Gesture Control (Game + Volume)...")
-    gesture_loop(device)
+
+    try:
+        gesture_loop(device)
+    except KeyboardInterrupt:
+        print("\n[INFO] Ctrl+C pressed. Exiting gesture control and closing BlueStacks...")
+    finally:
+        # Ensure BlueStacks is closed
+        if bluestacks_process.poll() is None:  # if still running
+            print("[INFO] Closing BlueStacks...")
+            bluestacks_process.terminate()
+            bluestacks_process.wait()
+        print("[INFO] All resources released. Goodbye!")

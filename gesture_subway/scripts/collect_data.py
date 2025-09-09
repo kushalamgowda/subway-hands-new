@@ -87,4 +87,4 @@ if __name__ == "__main__":
     gestures += ["volume_up", "volume_down", "mute"]
 
     for gesture in gestures:
-        collect_data(gesture, samples=200)  # Collect 200 samples each
+        collect_data(gesture, samples=100)  # Collect 100 samples each

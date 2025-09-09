@@ -5,6 +5,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # File paths
 DATA_FILE = os.path.join(BASE_DIR, "data", "gesture_data.pkl")
 MODEL_FILE = os.path.join(BASE_DIR, "models", "gesture_model.pkl")
+TEST_FILE = os.path.join(BASE_DIR, "data", "test.pkl")   # <-- Added
 LOG_FILE = os.path.join(BASE_DIR, "logs", "analytics.log")
 
 # Ensure folders exist
