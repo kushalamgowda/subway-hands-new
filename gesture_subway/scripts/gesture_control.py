@@ -178,3 +178,7 @@ if __name__ == "__main__":
             bluestacks_process.terminate()
             bluestacks_process.wait()
         print("[INFO] All resources released. Goodbye!")
+
+
+
+
