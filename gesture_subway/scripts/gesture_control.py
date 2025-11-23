@@ -175,7 +175,15 @@ def build_adb_args_for_gesture(gesture, device):
             prefix + ["input", "tap", "70", "60"]
         ]
     elif gesture == "start":
+        return [
+        prefix + ["input", "tap", "500", "1100"],
+        prefix + ["input", "tap", "520", "1080"],
+        prefix + ["input", "tap", "480", "1120"],
+    ]
+    elif gesture == "start": 
         return [prefix + ["input", "tap", "600", "1200"]]
+
+    
     else:
         return None
 
