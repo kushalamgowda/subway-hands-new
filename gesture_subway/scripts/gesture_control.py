@@ -1,4 +1,3 @@
-# gesture_control.py
 import cv2
 import mediapipe as mp
 import pickle
@@ -8,6 +7,8 @@ import subprocess
 import os
 import signal
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from utils import volume_up, volume_down, mute_toggle
 import config
@@ -31,17 +32,79 @@ mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.7)
 
-# ------------------------------
-# Helper Functions
-# ------------------------------
+# ===========================================================
+# 🔹 THREAD-SAFE CAMERA GRABBER (for smoother frame updates)
+# ===========================================================
+class CameraGrabber(threading.Thread):
+    def __init__(self, src=0, width=None, height=None):
+        super().__init__(daemon=True)
+        self.cap = cv2.VideoCapture(src, cv2.CAP_DSHOW)
+        if width and height:
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        self.lock = threading.Lock()
+        self.latest_frame = None
+        self.running = True
+
+    def run(self):
+        while self.running:
+            ret, frame = self.cap.read()
+            if not ret:
+                time.sleep(0.01)
+                continue
+            with self.lock:
+                self.latest_frame = frame
+        self.cap.release()
+
+    def read(self):
+        with self.lock:
+            return None if self.latest_frame is None else self.latest_frame.copy()
+
+    def stop(self):
+        self.running = False
+
+
+# ===========================================================
+# 🔹 NON-BLOCKING ADB COMMANDS
+# ===========================================================
+_executor = ThreadPoolExecutor(max_workers=2)
+
+def _run_subprocess_cmd(cmd_list):
+    try:
+        subprocess.run(cmd_list, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+    except Exception:
+        pass
+
+def send_command_async(cmd_list):
+    _executor.submit(_run_subprocess_cmd, cmd_list)
+
+
+# ===========================================================
+# 🔹 DEBOUNCE FOR GESTURE ACTIONS
+# ===========================================================
+class ActionDebouncer:
+    def __init__(self, min_interval=0.15):
+        self.min_interval = min_interval
+        self._last_time = {}
+
+    def allow(self, action_name):
+        now = time.time()
+        last = self._last_time.get(action_name, 0)
+        if now - last >= self.min_interval:
+            self._last_time[action_name] = now
+            return True
+        return False
+
+
+# ===========================================================
+# 🔹 ADB HELPER FUNCTIONS
+# ===========================================================
 def run_adb(args):
-    """Run adb command using full path."""
     cmd = [ADB_EXE] + args
     result = subprocess.run(cmd, capture_output=True, text=True)
     return result.stdout.strip()
 
 def get_device():
-    """Return the first connected device or None."""
     output = run_adb(["devices"])
     lines = output.splitlines()
     for line in lines[1:]:
@@ -79,83 +142,91 @@ def launch_subway_surfer(device):
     except Exception as e:
         print(f"[ERROR] Could not launch Subway Surfer: {e}")
 
-def extract_features(landmarks):
-    features = []
-    for lm in landmarks.landmark:
-        features.append(lm.x)
-        features.append(lm.y)
-    return np.array(features).reshape(1, -1)
 
-def perform_action(gesture, device):
-    if gesture == "swipe_left":
-        run_adb(["-s", device, "shell", "input", "swipe", "600", "1000", "200", "1000"])
-    elif gesture == "swipe_right":
-        run_adb(["-s", device, "shell", "input", "swipe", "400", "1000", "800", "1000"])
-    elif gesture == "swipe_up":
-        run_adb(["-s", device, "shell", "input", "swipe", "500", "1000", "500", "500"])
-    elif gesture == "swipe_down":
-        run_adb(["-s", device, "shell", "input", "swipe", "500", "1000", "500", "1500"])
-    elif gesture == "volume_up":
-        volume_up()
-    elif gesture == "volume_down":
-        volume_down()
-    elif gesture == "mute":
-        mute_toggle()
+# ===========================================================
+# 🔹 OPTIMIZED GESTURE LOOP
+# ===========================================================
+def gesture_loop_optimized(device_id, model, hands, show_preview=False):
+    cam = CameraGrabber(src=0, width=480, height=320)
+    cam.start()
 
-# ------------------------------
-# Gesture Loop
-# ------------------------------
-def gesture_loop(device):
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    debouncer = ActionDebouncer(min_interval=0.12)
     prev_gesture = None
-    last_time = time.time()
 
-    print("[INFO] Gesture control started. Press 'Ctrl+C' to quit.")
+    print("[INFO] Optimized gesture loop started. Press Ctrl+C to exit.")
 
     try:
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                print("[WARNING] Failed to read frame from camera.")
-                break
+        while True:
+            frame = cam.read()
+            if frame is None:
+                time.sleep(0.005)
+                continue
 
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            small = cv2.resize(frame, (0, 0), fx=0.6, fy=0.6)
+            rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
             result = hands.process(rgb)
+            gesture = None
 
             if result.multi_hand_landmarks:
-                for hand_landmarks in result.multi_hand_landmarks:
-                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-                    features = extract_features(hand_landmarks)
-                    gesture = model.predict(features)[0]
+                for lm_set in result.multi_hand_landmarks:
+                    mp_draw.draw_landmarks(small, lm_set, mp_hands.HAND_CONNECTIONS)
+                lm = result.multi_hand_landmarks[0].landmark
+                feat = np.array([[p.x for p in lm] + [p.y for p in lm]])
+                try:
+                    pred = model.predict(feat)
+                    gesture = pred[0]
+                except Exception:
+                    gesture = None
 
-                    cv2.putText(frame, f"Gesture: {gesture}", (10, 50),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            if gesture is None:
+                prev_gesture = None
+                time.sleep(0.002)
+                continue
 
-                    if gesture != prev_gesture and (time.time() - last_time) > 0.5:
-                        perform_action(gesture, device)
-                        prev_gesture = gesture
-                        last_time = time.time()
+            # ACTION MAPPING (use debounce + async ADB)
+            if gesture != prev_gesture:
+                if gesture == "swipe_left" and debouncer.allow("LEFT"):
+                    send_command_async([ADB_EXE, "-s", device_id, "shell", "input", "swipe", "600", "1000", "200", "1000"])
+                elif gesture == "swipe_right" and debouncer.allow("RIGHT"):
+                    send_command_async([ADB_EXE, "-s", device_id, "shell", "input", "swipe", "400", "1000", "800", "1000"])
+                elif gesture == "swipe_up" and debouncer.allow("UP"):
+                    send_command_async([ADB_EXE, "-s", device_id, "shell", "input", "swipe", "500", "1000", "500", "500"])
+                elif gesture == "swipe_down" and debouncer.allow("DOWN"):
+                    send_command_async([ADB_EXE, "-s", device_id, "shell", "input", "swipe", "500", "1000", "500", "1500"])
+                elif gesture == "volume_up" and debouncer.allow("VOL_UP"):
+                    volume_up()
+                elif gesture == "volume_down" and debouncer.allow("VOL_DOWN"):
+                    volume_down()
+                elif gesture == "mute" and debouncer.allow("MUTE"):
+                    mute_toggle()
+                prev_gesture = gesture
 
-            cv2.imshow("Gesture Control", frame)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
+            if show_preview:
+                cv2.putText(small, f"Gesture: {gesture}", (10, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.imshow("Gesture Control", small)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+
     except KeyboardInterrupt:
-        print("\n[INFO] Gesture control stopped by user (Ctrl+C). Exiting gracefully...")
+        print("\n[INFO] Exiting gesture loop...")
     finally:
-        cap.release()
-        cv2.destroyAllWindows()
+        cam.stop()
+        _executor.shutdown(wait=False)
+        if show_preview:
+            cv2.destroyAllWindows()
+        print("[INFO] All resources released.")
 
-# ------------------------------
-# Main
-# ------------------------------
+
+# ===========================================================
+# 🔹 MAIN ENTRY POINT
+# ===========================================================
 if __name__ == "__main__":
-    # Launch BlueStacks and get process handle
     bluestacks_process = launch_bluestacks(wait_after_launch=config.BLUESTACKS_BOOT_WAIT)
     if bluestacks_process is None:
         print("[ERROR] BlueStacks launch failed. Exiting...")
         sys.exit(1)
 
-    # Start adb server
     run_adb(["start-server"])
 
     device = wait_for_device(timeout=config.BLUESTACKS_CONNECT_TIMEOUT)
@@ -165,31 +236,16 @@ if __name__ == "__main__":
         sys.exit(1)
 
     launch_subway_surfer(device)
-    print("🚀 Starting Gesture Control (Game + Volume)...")
+    print("🚀 Starting Gesture Control (Optimized)...")
 
     try:
-        gesture_loop(device)
+        gesture_loop_optimized(device, model, hands, show_preview=True)
     except KeyboardInterrupt:
-        print("\n[INFO] Ctrl+C pressed. Exiting gesture control and closing BlueStacks...")
+        print("\n[INFO] Ctrl+C pressed. Stopping...")
     finally:
-        # Ensure BlueStacks is closed
-        if bluestacks_process.poll() is None:  # if still running
+        if bluestacks_process.poll() is None:
             print("[INFO] Closing BlueStacks...")
             bluestacks_process.terminate()
             bluestacks_process.wait()
-        print("[INFO] All resources released. Goodbye!")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        print("[INFO] Goodbye 👋")
 
