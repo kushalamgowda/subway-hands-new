@@ -1,13 +1,20 @@
-# analytics.py
+# analytics.py (patched)
 import json
 import time
+import os
 from collections import defaultdict
 
 class AnalyticsLogger:
     def __init__(self, log_file="data/analytics_log.json"):
         self.log_file = log_file
+        # store everything as normal dict internally (default to lists)
         self.data = defaultdict(list)
         self.start_time = time.time()
+
+        # make sure folder exists
+        folder = os.path.dirname(self.log_file)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
 
     def log_gesture(self, gesture_name):
         """Logs gesture action with timestamp."""
@@ -26,10 +33,10 @@ class AnalyticsLogger:
             "timestamp": time.time()
         }
         self.data["accuracy"].append(entry)
-        print(f"[ANALYTICS] Predicted: {predicted}, Actual: {actual}")
+        print(f"[ANALYTICS] Predicted={predicted}, Actual={actual}")
 
     def log_session(self):
-        """Logs overall session duration and gesture counts."""
+        """Logs overall session duration and gesture summary."""
         session_duration = time.time() - self.start_time
         summary = {
             "session_duration_sec": round(session_duration, 2),
@@ -38,6 +45,7 @@ class AnalyticsLogger:
         }
         self.data["session_summary"].append(summary)
         print(f"[ANALYTICS] Session Summary: {summary}")
+
         self.save_log()
 
     def count_gestures(self):
@@ -48,7 +56,20 @@ class AnalyticsLogger:
         return dict(counts)
 
     def save_log(self):
-        """Saves analytics data to JSON file."""
-        with open(self.log_file, "w") as f:
-            json.dump(self.data, f, indent=4)
-        print(f"[ANALYTICS] Saved log to {self.log_file}")
+        """Safely saves analytics to JSON."""
+        try:
+            # Convert defaultdict to a normal dict for JSON writing
+            normal_data = {k: v for k, v in self.data.items()}
+
+            # ensure directory exists
+            folder = os.path.dirname(self.log_file)
+            if folder:
+                os.makedirs(folder, exist_ok=True)
+
+            with open(self.log_file, "w") as f:
+                json.dump(normal_data, f, indent=4)
+
+            print(f"[ANALYTICS] Saved log to {self.log_file}")
+
+        except Exception as e:
+            print(f"[ANALYTICS-ERROR] Could not save log: {e}")
