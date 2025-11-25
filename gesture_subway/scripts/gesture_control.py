@@ -6,10 +6,8 @@ import numpy as np
 import time
 import subprocess
 import os
-import signal
 import sys
 
-from utils import volume_up, volume_down, mute_toggle
 import config
 
 # ------------------------------
@@ -35,13 +33,13 @@ hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.7)
 # Helper Functions
 # ------------------------------
 def run_adb(args):
-    """Run adb command using full path."""
     cmd = [ADB_EXE] + args
     result = subprocess.run(cmd, capture_output=True, text=True)
+    print(f"[ADB] CMD: {' '.join(cmd)}")
+    print(f"[ADB] OUTPUT: {result.stdout.strip()}")
     return result.stdout.strip()
 
 def get_device():
-    """Return the first connected device or None."""
     output = run_adb(["devices"])
     lines = output.splitlines()
     for line in lines[1:]:
@@ -86,26 +84,42 @@ def extract_features(landmarks):
         features.append(lm.y)
     return np.array(features).reshape(1, -1)
 
+# ------------------------------
+# ADB Actions
+# ------------------------------
 def perform_action(gesture, device):
+    global game_paused
+
+    # START / STOP
+    if gesture == "start":
+        game_paused = False
+        print("[INFO] ▶ Game Resumed")
+        return
+
+    if gesture == "stop":
+        game_paused = True
+        print("[INFO] ⏸ Game Paused")
+        return
+
+    if game_paused:
+        return
+
     if gesture == "swipe_left":
         run_adb(["-s", device, "shell", "input", "swipe", "600", "1000", "200", "1000"])
+
     elif gesture == "swipe_right":
         run_adb(["-s", device, "shell", "input", "swipe", "400", "1000", "800", "1000"])
+
     elif gesture == "swipe_up":
         run_adb(["-s", device, "shell", "input", "swipe", "500", "1000", "500", "500"])
+
     elif gesture == "swipe_down":
         run_adb(["-s", device, "shell", "input", "swipe", "500", "1000", "500", "1500"])
-    elif gesture == "volume_up":
-        volume_up()
-    elif gesture == "volume_down":
-        volume_down()
-    elif gesture == "mute":
-        mute_toggle()
+
     elif gesture == "double_tap":
-        print("[ACTION] Double Tap detected → Surfboard Activated 🏄")
-       
+        print("[ACTION] Double Tap → Surfboard Activated 🏄")
         run_adb(["-s", device, "shell", "input", "tap", "500", "1000"])
-        time.sleep(0.15)  
+        time.sleep(0.15)
         run_adb(["-s", device, "shell", "input", "tap", "500", "1000"])
 
 
@@ -113,17 +127,25 @@ def perform_action(gesture, device):
 # Gesture Loop
 # ------------------------------
 def gesture_loop(device):
+    global game_paused
+
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+
     prev_gesture = None
     last_time = time.time()
+
+    # NEW stable detection
+    stable_gesture = None
+    stable_count = 0
 
     print("[INFO] Gesture control started. Press 'Ctrl+C' to quit.")
 
     try:
         while cap.isOpened():
+
             ret, frame = cap.read()
             if not ret:
-                print("[WARNING] Failed to read frame from camera.")
+                print("[WARNING] Failed to read camera frame.")
                 break
 
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -131,23 +153,38 @@ def gesture_loop(device):
 
             if result.multi_hand_landmarks:
                 for hand_landmarks in result.multi_hand_landmarks:
+
                     mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
                     features = extract_features(hand_landmarks)
                     gesture = model.predict(features)[0]
 
-                    cv2.putText(frame, f"Gesture: {gesture}", (10, 50),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    cv2.putText(frame, f"Gesture: {gesture}",
+                                (10, 50), cv2.FONT_HERSHEY_SIMPLEX,
+                                1, (0, 255, 0), 2)
 
-                    if gesture != prev_gesture and (time.time() - last_time) > 0.5:
+                    print(f"[DETECT] {gesture} (prev={prev_gesture})")
+
+                    # STABILITY CHECK
+                    if gesture == stable_gesture:
+                        stable_count += 1
+                    else:
+                        stable_gesture = gesture
+                        stable_count = 1
+
+                    if stable_count >= 2 and (time.time() - last_time) > 0.5:
+                        print(f"[TRIGGER] Triggering: {gesture}")
                         perform_action(gesture, device)
                         prev_gesture = gesture
                         last_time = time.time()
+                        stable_count = 0
 
             cv2.imshow("Gesture Control", frame)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
+
     except KeyboardInterrupt:
-        print("\n[INFO] Gesture control stopped by user (Ctrl+C). Exiting gracefully...")
+        print("\n[INFO] Gesture control stopped by user.")
     finally:
         cap.release()
         cv2.destroyAllWindows()
@@ -156,32 +193,27 @@ def gesture_loop(device):
 # Main
 # ------------------------------
 if __name__ == "__main__":
-    # Launch BlueStacks and get process handle
+
+    game_paused = False
+
     bluestacks_process = launch_bluestacks(wait_after_launch=config.BLUESTACKS_BOOT_WAIT)
     if bluestacks_process is None:
-        print("[ERROR] BlueStacks launch failed. Exiting...")
         sys.exit(1)
 
-    # Start adb server
     run_adb(["start-server"])
 
     device = wait_for_device(timeout=config.BLUESTACKS_CONNECT_TIMEOUT)
     if not device:
-        print("[ERROR] No device detected. Exiting...")
         bluestacks_process.terminate()
         sys.exit(1)
 
     launch_subway_surfer(device)
-    print("🚀 Starting Gesture Control (Game + Volume)...")
+    print("🚀 Starting Gesture Control...")
 
     try:
         gesture_loop(device)
-    except KeyboardInterrupt:
-        print("\n[INFO] Ctrl+C pressed. Exiting gesture control and closing BlueStacks...")
     finally:
-        # Ensure BlueStacks is closed
-        if bluestacks_process.poll() is None:  # if still running
-            print("[INFO] Closing BlueStacks...")
+        if bluestacks_process.poll() is None:
             bluestacks_process.terminate()
             bluestacks_process.wait()
-        print("[INFO] All resources released. Goodbye!")
+        print("[INFO] Closed BlueStacks. Goodbye!")

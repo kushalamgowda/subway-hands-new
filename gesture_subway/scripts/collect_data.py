@@ -71,6 +71,7 @@ def collect_data(gesture_name, samples=200):
         else:
             all_data = {}
 
+        # Append new data to this gesture
         all_data[gesture_name] = all_data.get(gesture_name, []) + data
 
         with open(config.DATA_FILE, "wb") as f:
@@ -80,11 +81,16 @@ def collect_data(gesture_name, samples=200):
 
 
 if __name__ == "__main__":
-    # 🕹️ Game gestures
-    gestures = ["swipe_left", "swipe_right", "swipe_up", "swipe_down", "start", "stop","double_tap"]
-
-    # 🔊 Volume gestures
-    gestures += ["volume_up", "volume_down", "mute"]
+    # 🕹️ Game gestures only (NO volume controls)
+    gestures = [
+        "swipe_left",
+        "swipe_right",
+        "swipe_up",
+        "swipe_down",
+        "start",
+        "stop",
+        "double_tap"
+    ]
 
     for gesture in gestures:
-        collect_data(gesture, samples=100)  # Collect 100 samples each
+        collect_data(gesture, samples=100)

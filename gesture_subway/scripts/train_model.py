@@ -27,34 +27,43 @@ def train_model():
         print(f"[ERROR] Failed to load dataset: {e}")
         sys.exit(1)
 
+    # ---------------------------------------------------------
+    # ✅ Remove old unwanted gestures if they still exist
+    # ---------------------------------------------------------
+    unwanted = ["volume_up", "volume_down", "features"]  # safe cleanup
+    for label in unwanted:
+        if label in data:
+            print(f"[INFO] Removing old gesture '{label}' from dataset...")
+            del data[label]
+    # ---------------------------------------------------------
+
     X, y = [], []
 
-    # ✅ Collect features + labels safely
+    # Collect features + labels
     for gesture_name, samples in data.items():
         for s in samples:
-            arr = np.array(s).ravel()   # flatten into 1D vector
+            arr = np.array(s).ravel()
 
-            # ✅ Skip invalid samples (hand not detected properly)
-            if arr.shape[0] != 42:  
-                continue  
+            # Skip invalid samples
+            if arr.shape[0] != 42:
+                continue
 
             X.append(arr)
             y.append(gesture_name)
 
-    # ✅ Convert safely to arrays
     X = np.array(X)
     y = np.array(y)
 
     print("[INFO] Final dataset shape:", X.shape, y.shape)
     print("[INFO] Unique labels:", set(y))
 
-    # Split into train/test sets
+    # Split
     print("[INFO] Splitting dataset...")
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    # Train model
+    # Train
     print("[INFO] Training model...")
     model = RandomForestClassifier(n_estimators=100, random_state=42)
     model.fit(X_train, y_train)
@@ -62,12 +71,12 @@ def train_model():
     # Save model
     gesture_ml.save_model(model, config.MODEL_FILE)
 
-    # Save test data separately
+    # Save test set
     test_data = {"features": X_test, "labels": y_test}
     with open(config.TEST_FILE, "wb") as f:
         pickle.dump(test_data, f)
 
-    # Evaluate on test set
+    # Evaluate
     print("[INFO] Evaluating model...")
     y_pred = model.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
