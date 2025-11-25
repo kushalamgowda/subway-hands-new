@@ -27,8 +27,26 @@ def train_model():
         print(f"[ERROR] Failed to load dataset: {e}")
         sys.exit(1)
 
-    X = np.array(data["features"])
-    y = np.array(data["labels"])
+    X, y = [], []
+
+    # ✅ Collect features + labels safely
+    for gesture_name, samples in data.items():
+        for s in samples:
+            arr = np.array(s).ravel()   # flatten into 1D vector
+
+            # ✅ Skip invalid samples (hand not detected properly)
+            if arr.shape[0] != 42:  
+                continue  
+
+            X.append(arr)
+            y.append(gesture_name)
+
+    # ✅ Convert safely to arrays
+    X = np.array(X)
+    y = np.array(y)
+
+    print("[INFO] Final dataset shape:", X.shape, y.shape)
+    print("[INFO] Unique labels:", set(y))
 
     # Split into train/test sets
     print("[INFO] Splitting dataset...")
@@ -41,7 +59,7 @@ def train_model():
     model = RandomForestClassifier(n_estimators=100, random_state=42)
     model.fit(X_train, y_train)
 
-    # Save model (just model → no breaking changes)
+    # Save model
     gesture_ml.save_model(model, config.MODEL_FILE)
 
     # Save test data separately

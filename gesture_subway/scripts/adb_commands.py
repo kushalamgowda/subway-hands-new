@@ -33,18 +33,6 @@ def get_default_device():
             return line.split()[0]
     return None
 
-def connect_device():
-    """Start adb server and return a connected device"""
-    run_adb(["start-server"])
-    time.sleep(1)
-    device = get_default_device()
-    if device:
-        print(f"[INFO] Device connected: {device}")
-        return device
-    else:
-        print("[ERROR] No device detected. Please start BlueStacks first.")
-        return None
-
 # ------------------------------
 # Send commands to device
 # ------------------------------
@@ -67,10 +55,17 @@ def send_command(action, device=None):
         run_adb(prefix + ["input", "tap", "1000", "150"])
     elif action == "PLAY":
         run_adb(prefix + ["input", "tap", "600", "1200"])
+    elif action == "DOUBLE_TAP":
+        print("[ACTION] Double Tap → Activating Surfboard 🏄")
+
+        run_adb(prefix + ["input", "tap", "500", "1000"])
+        time.sleep(0.15)  
+        run_adb(prefix + ["input", "tap", "500", "1000"])
     elif action == "STOP":
         print("[ACTION] Stop detected – no command sent")
     else:
         print(f"[WARNING] Unknown action: {action}")
+
 
 # ------------------------------
 # Launch BlueStacks

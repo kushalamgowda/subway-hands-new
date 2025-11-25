@@ -101,6 +101,13 @@ def perform_action(gesture, device):
         volume_down()
     elif gesture == "mute":
         mute_toggle()
+    elif gesture == "double_tap":
+        print("[ACTION] Double Tap detected → Surfboard Activated 🏄")
+       
+        run_adb(["-s", device, "shell", "input", "tap", "500", "1000"])
+        time.sleep(0.15)  
+        run_adb(["-s", device, "shell", "input", "tap", "500", "1000"])
+
 
 # ------------------------------
 # Gesture Loop

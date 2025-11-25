@@ -81,7 +81,7 @@ def collect_data(gesture_name, samples=200):
 
 if __name__ == "__main__":
     # 🕹️ Game gestures
-    gestures = ["swipe_left", "swipe_right", "swipe_up", "swipe_down", "start", "stop"]
+    gestures = ["swipe_left", "swipe_right", "swipe_up", "swipe_down", "start", "stop","double_tap"]
 
     # 🔊 Volume gestures
     gestures += ["volume_up", "volume_down", "mute"]
